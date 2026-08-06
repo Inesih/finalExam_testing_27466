@@ -13,9 +13,12 @@ public class Membership {
     private UUID id;
 
     private String membershipCode;
-    
+
     @Temporal(TemporalType.DATE)
     private Date registrationDate;
+
+    @Enumerated(EnumType.STRING)
+    private EMembershipStatus status;
 
     @OneToOne
     @JoinColumn(name = "user_id")
@@ -33,45 +36,24 @@ public class Membership {
         this.registrationDate = registrationDate;
         this.user = user;
         this.membershipType = membershipType;
+        this.status = EMembershipStatus.PENDING;
     }
 
-    public UUID getId() {
-        return id;
-    }
+    public UUID getId() { return id; }
+    public void setId(UUID id) { this.id = id; }
 
-    public void setId(UUID id) {
-        this.id = id;
-    }
+    public String getMembershipCode() { return membershipCode; }
+    public void setMembershipCode(String membershipCode) { this.membershipCode = membershipCode; }
 
-    public String getMembershipCode() {
-        return membershipCode;
-    }
+    public Date getRegistrationDate() { return registrationDate; }
+    public void setRegistrationDate(Date registrationDate) { this.registrationDate = registrationDate; }
 
-    public void setMembershipCode(String membershipCode) {
-        this.membershipCode = membershipCode;
-    }
+    public EMembershipStatus getStatus() { return status; }
+    public void setStatus(EMembershipStatus status) { this.status = status; }
 
-    public Date getRegistrationDate() {
-        return registrationDate;
-    }
+    public User getUser() { return user; }
+    public void setUser(User user) { this.user = user; }
 
-    public void setRegistrationDate(Date registrationDate) {
-        this.registrationDate = registrationDate;
-    }
-
-    public User getUser() {
-        return user;
-    }
-
-    public void setUser(User user) {
-        this.user = user;
-    }
-
-    public MembershipType getMembershipType() {
-        return membershipType;
-    }
-
-    public void setMembershipType(MembershipType membershipType) {
-        this.membershipType = membershipType;
-    }
+    public MembershipType getMembershipType() { return membershipType; }
+    public void setMembershipType(MembershipType membershipType) { this.membershipType = membershipType; }
 }
