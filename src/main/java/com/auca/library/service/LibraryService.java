@@ -127,31 +127,30 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
     }
 
     // Requirement 7: Validate Borrow Limit
-    public void validateBorrowLimit(UUID readerId) {
-        Membership membership = null;
-        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-            membership = session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
-                    .setParameter("u", readerId)
-                    .uniqueResult();
-        }
-
-        if (membership == null) {
-            throw new IllegalStateException("User does not have a membership!");
-        }
-
-        long activeBorrows = 0;
-        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-            Long count = session.createQuery("SELECT count(b) FROM Borrower b WHERE b.reader.id = :u AND b.returnDate IS NULL", Long.class)
-                    .setParameter("u", readerId)
-                    .uniqueResult();
-            if (count != null) activeBorrows = count;
-        }
-
-        if (activeBorrows >= membership.getMembershipType().getMaxBooks()) {
-            throw new IllegalStateException("Borrow limit reached for this membership level!");
-        }
+   public void validateBorrowLimit(UUID readerId) {
+    Membership membership = null;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+        membership = session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
+                .setParameter("u", readerId)
+                .uniqueResult();
     }
 
+    if (membership == null || membership.getStatus() != EMembershipStatus.ACTIVE) {
+        throw new BorrowLimitExceededException("User does not have an active membership!");
+    }
+
+    long activeBorrows = 0;
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+        Long count = session.createQuery("SELECT count(b) FROM Borrower b WHERE b.reader.id = :u AND b.returnDate IS NULL", Long.class)
+                .setParameter("u", readerId)
+                .uniqueResult();
+        if (count != null) activeBorrows = count;
+    }
+
+    if (activeBorrows >= membership.getMembershipType().getMaxBooks()) {
+        throw new BorrowLimitExceededException("Borrow limit reached for this membership level!");
+    }
+}
     // Requirement 8: Assign Book to Shelf
     public void assignBookToShelf(UUID bookId, UUID shelfId) {
         Book book = bookDao.findById(bookId);
