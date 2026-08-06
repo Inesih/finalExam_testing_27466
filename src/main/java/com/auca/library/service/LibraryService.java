@@ -2,6 +2,7 @@ package com.auca.library.service;
 
 import com.auca.library.dao.GenericDao;
 import com.auca.library.domain.*;
+import com.auca.library.exception.BorrowLimitExceededException;
 import com.auca.library.util.HibernateUtil;
 import org.hibernate.Session;
 
@@ -60,15 +61,44 @@ public class LibraryService {
     }
 
     // Requirement 5: Register Membership
-    public Membership registerMembership(UUID userId, UUID membershipTypeId) {
-        User user = userDao.findById(userId);
-        MembershipType type = membershipTypeDao.findById(membershipTypeId);
+   public Membership registerMembership(UUID userId, UUID membershipTypeId) {
+    User user = userDao.findById(userId);
+    MembershipType type = membershipTypeDao.findById(membershipTypeId);
 
-        Membership membership = new Membership("MEM-" + System.currentTimeMillis(), new Date(), user, type);
-        membershipDao.save(membership);
-        return membership;
+    Membership existing = findMembershipByUser(userId);
+    if (existing != null && existing.getStatus() == EMembershipStatus.ACTIVE) {
+        throw new IllegalStateException("User already has an active membership!");
     }
 
+    Membership membership = new Membership("MEM-" + System.currentTimeMillis(), new Date(), user, type);
+    membershipDao.save(membership);
+    return membership;
+}
+
+private Membership findMembershipByUser(UUID userId) {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+        return session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
+                .setParameter("u", userId)
+                .uniqueResult();
+    }
+}
+
+public void seedMembershipTypes() {
+    createTypeIfMissing(MembershipTierConstants.GOLD, MembershipTierConstants.GOLD_MAX_BOOKS, MembershipTierConstants.GOLD_DAILY_RATE);
+    createTypeIfMissing(MembershipTierConstants.SILVER, MembershipTierConstants.SILVER_MAX_BOOKS, MembershipTierConstants.SILVER_DAILY_RATE);
+    createTypeIfMissing(MembershipTierConstants.STRIVER, MembershipTierConstants.STRIVER_MAX_BOOKS, MembershipTierConstants.STRIVER_DAILY_RATE);
+}
+
+private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
+    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+        MembershipType existing = session.createQuery("FROM MembershipType WHERE name = :n", MembershipType.class)
+                .setParameter("n", name)
+                .uniqueResult();
+        if (existing == null) {
+            membershipTypeDao.save(new MembershipType(name, maxBooks, 0, dailyRate));
+        }
+    }
+}
     // Requirement 6: Borrow Book
     public Borrower borrowBook(UUID readerId, UUID bookId) {
         validateBorrowLimit(readerId);
