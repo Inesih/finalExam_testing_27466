@@ -19,29 +19,46 @@ public class LibraryService {
     private GenericDao<Book> bookDao = new GenericDao<>(Book.class);
     private GenericDao<Borrower> borrowerDao = new GenericDao<>(Borrower.class);
 
-    // Requirement 1: Create Location Hierarchy
     public Location createLocation(Location location, UUID parentId) {
-        if (parentId != null) {
+        if (location.getCode() != null && findLocationByCode(location.getCode()) != null) {
+            throw new IllegalArgumentException("Location code already exists: " + location.getCode());
+        }
+
+        if (location.getType() == ELocationType.PROVINCE) {
+            location.setParent(null);
+        } else {
+            if (parentId == null) {
+                throw new IllegalArgumentException("Parent location is required for type " + location.getType());
+            }
             Location parent = locationDao.findById(parentId);
+            if (parent == null) {
+                throw new IllegalArgumentException("Parent location not found");
+            }
             location.setParent(parent);
         }
+
         locationDao.save(location);
         return location;
     }
 
-    // Requirement 2: Village ID -> Province Name
+    private Location findLocationByCode(String code) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            return session.createQuery("FROM Location WHERE code = :c", Location.class)
+                    .setParameter("c", code)
+                    .uniqueResult();
+        }
+    }
+
     public String getProvinceNameByVillageId(UUID villageId) {
         Location location = locationDao.findById(villageId);
         if (location == null) return null;
 
-        // Traverse up the chain until reaching the top parent (Province)
         while (location.getParent() != null) {
             location = location.getParent();
         }
         return location.getName();
     }
 
-    // Requirement 3: Person ID -> Province Name
     public String getProvinceNameByPersonId(UUID personId) {
         User user = userDao.findById(personId);
         if (user == null || user.getLocation() == null) return null;
@@ -49,8 +66,10 @@ public class LibraryService {
         return getProvinceNameByVillageId(user.getLocation().getId());
     }
 
-    // Requirement 4: Authenticate User
     public boolean authenticate(String username, String password) {
+        if (username == null || username.isBlank() || password == null || password.isBlank()) {
+            return false;
+        }
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             User user = session.createQuery("FROM User WHERE username = :u", User.class)
                     .setParameter("u", username)
@@ -60,46 +79,53 @@ public class LibraryService {
         }
     }
 
-    // Requirement 5: Register Membership
-   public Membership registerMembership(UUID userId, UUID membershipTypeId) {
-    User user = userDao.findById(userId);
-    MembershipType type = membershipTypeDao.findById(membershipTypeId);
+    public Membership registerMembership(UUID userId, UUID membershipTypeId) {
+        User user = userDao.findById(userId);
+        MembershipType type = membershipTypeDao.findById(membershipTypeId);
 
-    Membership existing = findMembershipByUser(userId);
-    if (existing != null && existing.getStatus() == EMembershipStatus.ACTIVE) {
-        throw new IllegalStateException("User already has an active membership!");
+        Membership existing = findMembershipByUser(userId);
+        if (existing != null && existing.getStatus() == EMembershipStatus.ACTIVE) {
+            throw new IllegalStateException("User already has an active membership!");
+        }
+
+        Membership membership = new Membership("MEM-" + System.currentTimeMillis(), new Date(), user, type);
+        membershipDao.save(membership);
+        return membership;
     }
 
-    Membership membership = new Membership("MEM-" + System.currentTimeMillis(), new Date(), user, type);
-    membershipDao.save(membership);
-    return membership;
-}
-
-private Membership findMembershipByUser(UUID userId) {
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-        return session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
-                .setParameter("u", userId)
-                .uniqueResult();
-    }
-}
-
-public void seedMembershipTypes() {
-    createTypeIfMissing(MembershipTierConstants.GOLD, MembershipTierConstants.GOLD_MAX_BOOKS, MembershipTierConstants.GOLD_DAILY_RATE);
-    createTypeIfMissing(MembershipTierConstants.SILVER, MembershipTierConstants.SILVER_MAX_BOOKS, MembershipTierConstants.SILVER_DAILY_RATE);
-    createTypeIfMissing(MembershipTierConstants.STRIVER, MembershipTierConstants.STRIVER_MAX_BOOKS, MembershipTierConstants.STRIVER_DAILY_RATE);
-}
-
-private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-        MembershipType existing = session.createQuery("FROM MembershipType WHERE name = :n", MembershipType.class)
-                .setParameter("n", name)
-                .uniqueResult();
-        if (existing == null) {
-            membershipTypeDao.save(new MembershipType(name, maxBooks, 0, dailyRate));
+    private Membership findMembershipByUser(UUID userId) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            return session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
+                    .setParameter("u", userId)
+                    .uniqueResult();
         }
     }
-}
-    // Requirement 6: Borrow Book
+
+    public void seedMembershipTypes() {
+        createTypeIfMissing(MembershipTierConstants.GOLD, MembershipTierConstants.GOLD_MAX_BOOKS, MembershipTierConstants.GOLD_DAILY_RATE);
+        createTypeIfMissing(MembershipTierConstants.SILVER, MembershipTierConstants.SILVER_MAX_BOOKS, MembershipTierConstants.SILVER_DAILY_RATE);
+        createTypeIfMissing(MembershipTierConstants.STRIVER, MembershipTierConstants.STRIVER_MAX_BOOKS, MembershipTierConstants.STRIVER_DAILY_RATE);
+    }
+
+    private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            MembershipType existing = session.createQuery("FROM MembershipType WHERE name = :n", MembershipType.class)
+                    .setParameter("n", name)
+                    .uniqueResult();
+            if (existing == null) {
+                membershipTypeDao.save(new MembershipType(name, maxBooks, 0, dailyRate));
+            }
+        }
+    }
+
+    public MembershipType findMembershipTypeByName(String name) {
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            return session.createQuery("FROM MembershipType WHERE name = :n", MembershipType.class)
+                    .setParameter("n", name)
+                    .uniqueResult();
+        }
+    }
+
     public Borrower borrowBook(UUID readerId, UUID bookId) {
         validateBorrowLimit(readerId);
 
@@ -110,7 +136,6 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
             throw new IllegalStateException("Book is not available!");
         }
 
-        // Set pickup today and due date in 14 days
         Date pickupDate = new Date();
         Calendar cal = Calendar.getInstance();
         cal.setTime(pickupDate);
@@ -126,32 +151,31 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
         return borrower;
     }
 
-    // Requirement 7: Validate Borrow Limit
-   public void validateBorrowLimit(UUID readerId) {
-    Membership membership = null;
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-        membership = session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
-                .setParameter("u", readerId)
-                .uniqueResult();
+    public void validateBorrowLimit(UUID readerId) {
+        Membership membership = null;
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            membership = session.createQuery("FROM Membership m WHERE m.user.id = :u", Membership.class)
+                    .setParameter("u", readerId)
+                    .uniqueResult();
+        }
+
+        if (membership == null || membership.getStatus() != EMembershipStatus.ACTIVE) {
+            throw new BorrowLimitExceededException("User does not have an active membership!");
+        }
+
+        long activeBorrows = 0;
+        try (Session session = HibernateUtil.getSessionFactory().openSession()) {
+            Long count = session.createQuery("SELECT count(b) FROM Borrower b WHERE b.reader.id = :u AND b.returnDate IS NULL", Long.class)
+                    .setParameter("u", readerId)
+                    .uniqueResult();
+            if (count != null) activeBorrows = count;
+        }
+
+        if (activeBorrows >= membership.getMembershipType().getMaxBooks()) {
+            throw new BorrowLimitExceededException("Borrow limit reached for this membership level!");
+        }
     }
 
-    if (membership == null || membership.getStatus() != EMembershipStatus.ACTIVE) {
-        throw new BorrowLimitExceededException("User does not have an active membership!");
-    }
-
-    long activeBorrows = 0;
-    try (Session session = HibernateUtil.getSessionFactory().openSession()) {
-        Long count = session.createQuery("SELECT count(b) FROM Borrower b WHERE b.reader.id = :u AND b.returnDate IS NULL", Long.class)
-                .setParameter("u", readerId)
-                .uniqueResult();
-        if (count != null) activeBorrows = count;
-    }
-
-    if (activeBorrows >= membership.getMembershipType().getMaxBooks()) {
-        throw new BorrowLimitExceededException("Borrow limit reached for this membership level!");
-    }
-}
-    // Requirement 8: Assign Book to Shelf
     public void assignBookToShelf(UUID bookId, UUID shelfId) {
         Book book = bookDao.findById(bookId);
         Shelf shelf = shelfDao.findById(shelfId);
@@ -165,7 +189,6 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
         }
     }
 
-    // Requirement 9: Assign Shelf to Room
     public void assignShelfToRoom(UUID shelfId, UUID roomId) {
         Shelf shelf = shelfDao.findById(shelfId);
         Room room = roomDao.findById(roomId);
@@ -176,7 +199,6 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
         }
     }
 
-    // Requirement 10: Count Books in Room
     public int countBooksInRoom(UUID roomId) {
         try (Session session = HibernateUtil.getSessionFactory().openSession()) {
             Long count = session.createQuery("SELECT count(b) FROM Book b WHERE b.shelf.room.id = :r", Long.class)
@@ -186,7 +208,6 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
         }
     }
 
-    // Requirement 11: Find Room with Fewest Books
     public Room findRoomWithFewestBooks() {
         List<Room> rooms = roomDao.findAll();
         if (rooms.isEmpty()) return null;
@@ -204,7 +225,6 @@ private void createTypeIfMissing(String name, int maxBooks, int dailyRate) {
         return smallestRoom;
     }
 
-    // Requirement 12: Calculate Late Fee
     public int calculateLateFee(UUID borrowerId) {
         Borrower borrower = borrowerDao.findById(borrowerId);
         if (borrower == null || borrower.getDueDate() == null) return 0;
