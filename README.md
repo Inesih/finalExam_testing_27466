@@ -12,11 +12,17 @@ A Java + Hibernate + PostgreSQL console application for managing library operati
 
 ## Project Structure
 src/main/java/com/auca/library/
+
 ├── domain/      # Entity classes (Location, User, Book, Membership, etc.)
+
 ├── dao/         # Generic Hibernate DAO for CRUD operations
+
 ├── service/     # Business logic (LibraryService)
+
 ├── exception/   # Custom exceptions (BorrowLimitExceededException)
+
 ├── util/        # HibernateUtil (SessionFactory setup)
+
 └── App.java     # Console menu entry point
 
 src/test/java/com/auca/library/
